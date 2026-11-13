@@ -1,6 +1,7 @@
 # Reto 03 — Agente conversacional de Órdenes de Compra SAP
 
 **Demo pública (túnel activo):** <https://practice-lexmark-acre-define.trycloudflare.com>
+**Repositorio público (código fuente):** <https://github.com/dfserver1/reto-03-sap-agent>
 
 **Documento de solución:** [`SOLUCION.md`](./SOLUCION.md)
 
@@ -82,6 +83,24 @@ npm run tunnel
 ```
 
 El script descarga `cloudflared` la primera vez en `.tools/` (ignorado por Git) e imprime una URL `https://....trycloudflare.com`. Mantén ambas ventanas abiertas. Para un despliegue permanente, usa el `Dockerfile`/`render.yaml` (sección 7).
+
+### Opción D — Clonar el repositorio público y validar
+
+Repositorio público: <https://github.com/dfserver1/reto-03-sap-agent>
+
+```bash
+git clone https://github.com/dfserver1/reto-03-sap-agent.git
+cd reto-03-sap-agent
+npm ci
+npm run build   # compila frontend (public/) y backend (dist/)
+npm start       # http://localhost:3001
+npm run demo    # 6/6 PASS, sin consumir LLM
+```
+
+- El repositorio contiene el código fuente, los fixtures, `SOLUCION.md`, `SECURITY.md` y `README.md`.
+- `dist/`, `public/` y `out/` se reconstituyen con `npm run build` y `npm run demo`; no se publican por ser artefactos.
+- Para validar solo el comportamiento funcional, `npm run demo` no requiere red, modelo ni clave de API.
+- Para validar sin instalar nada, usa el ZIP adjunto al correo (incluye el build precompilado `dist/` + `public/`).
 
 ---
 

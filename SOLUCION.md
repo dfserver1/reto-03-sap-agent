@@ -1,7 +1,8 @@
 # SOLUCIÓN — Reto 03: Agente conversacional de Órdenes de Compra SAP
 
 > **Demo pública:** <https://practice-lexmark-acre-define.trycloudflare.com>
-> **Repositorio/entrega:** carpeta `reto-03-sap-agent` (zip sin `node_modules`, `out/`, `.env` ni artefactos de build).
+> **Repositorio público:** <https://github.com/dfserver1/reto-03-sap-agent>
+> **Repositorio/entrega:** `reto-03-sap-agent` (fuente en GitHub sin `node_modules`, `out/`, `.env` ni artefactos de build); ZIP adjunto al correo (sin artefactos de build).
 > **Nota de transparencia:** la instancia pública se levantó sin `GEMINI_API_KEY`, así que corre con el adaptador determinista (`/api/health` → `provider: "mock"`). El adaptador Gemini está implementado y se activa con la variable de entorno; el demo `npm run demo` no consume LLM por diseño. Ver sección 4.
 
 ---
