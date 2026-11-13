@@ -1,0 +1,12 @@
+node_modules/
+dist/
+public/
+out/
+.env
+*.log
+.DS_Store
+.vercel/
+.tools/
+*.zip
+
+.vercel

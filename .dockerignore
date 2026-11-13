@@ -1,0 +1,13 @@
+node_modules
+out
+dist
+public
+.git
+.gitignore
+.vercel
+.env
+.env.*
+!.env.example
+*.zip
+*.log
+npm-debug.log*
