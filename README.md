@@ -1,25 +1,48 @@
 # Reto 03 — Agente conversacional de Órdenes de Compra SAP
 
-**Demo pública (túnel activo):** <https://practice-lexmark-acre-define.trycloudflare.com>
+**Demo pública (túnel, temporal):** <https://practice-lexmark-acre-define.trycloudflare.com>
 **Repositorio público (código fuente):** <https://github.com/dfserver1/reto-03-sap-agent>
+**Documento de solución:** [`SOLUCION.md`](./SOLUCION.md) · **Seguridad:** [`SECURITY.md`](./SECURITY.md)
 
-**Documento de solución:** [`SOLUCION.md`](./SOLUCION.md)
-
-Agente en TypeScript que lee un paquete de compra (correo, solicitud, cotización y aprobación), lo valida contra los maestros, construye el payload de una orden de compra, genera la evidencia de aprobación y crea la OC en un SAP simulado. Si hay una excepción, no la resuelve solo: pide confirmación humana explícita.
+[![Node 20+](https://img.shields.io/badge/Node-20%2B-339933)](https://nodejs.org)
+[![Demo 6/6](https://img.shields.io/badge/Demo-6/6%20PASS-22c55e)](./SOLUCION.md)
+[![TypeScript](https://img.shields.io/badge/TypeScript-estricto-3178c6)](./tsconfig.json)
 
 > **Estado del modelo en la URL pública:** la instancia de demostración se levantó sin `GEMINI_API_KEY`, por lo que el servidor usa el adaptador determinista (`/api/health` devuelve `provider: "mock"`). El adaptador Gemini está implementado y se activa definiendo `GEMINI_API_KEY`; el resto del flujo (herramientas, reglas, confirmaciones, evidencia y SAP simulado) es exactamente el mismo. Ver [“Activar Gemini”](#activar-gemini).
 
 ---
 
-## 1. Resultado verificable
+## 1. Qué hace el agente
+
+Un analista recibe por correo un paquete de compra (correo, solicitud, cotización y aprobación) y hoy lo transcribe a mano a SAP. El agente recibe ese paquete como archivos del kit, lo **lee**, lo **valida** contra los maestros, construye el **payload** de la OC, genera la **evidencia** (`aprobacion.txt` / `.pdf`) y **crea la OC** solo cuando no hay excepciones. Si algo no cuadra, no resuelve solo: explica el problema y pide una **confirmación humana**.
+
+```mermaid
+flowchart LR
+    U[Analista] -->|chat| F[Frontend React + Vite]
+    F -->|POST /api/chat| B[Backend Express]
+    B --> O[Orquestador<br/>loop.ts]
+    O -->|sin clave: ruta determinista| T[Herramientas oc_*]
+    O -->|con GEMINI_API_KEY| G[GeminiAdapter<br/>gemini-4-hydrogen]
+    G -->|function calls| T
+    T --> X[fixtures/reto-03<br/>contexto original]
+    T --> R[RC1–RC10<br/>validación]
+    R --> P[Payload OrdenCompra]
+    P --> E[Evidencia TXT/PDF]
+    P --> SAP[SapMock<br/>ordenes.jsonl]
+    SAP --> OUT[out/ evidencias]
+```
+
+**Implementación:** backend Express + TypeScript estricto, frontend React + Vite, Zod para el contrato de herramientas, hash canónico para impedir alteración del payload, y sesiones en memoria con confirmaciones separadas.
+
+---
+
+## 2. Resultado verificable
 
 El demo determinista no consume LLM y recorre los seis casos del kit:
 
 ```bash
 npm run demo
 ```
-
-Resultado real de la última ejecución:
 
 | Caso | Qué prueba | Resultado | OC / motivo |
 |---|---|---|---|
@@ -37,54 +60,45 @@ En `sol-004` se usa el valor de la **solicitud** (`25.000.000`), no el de la cot
 
 ---
 
-## 2. Arranque rápido
+## 3. Requisitos mínimos
 
-### Opción A — Docker (un solo comando)
+| Requisito | Versión | Para qué |
+|---|---|---|
+| Node.js | **20+** (probado con Node 24) | Backend, build y demo |
+| npm | Incluido con Node | Instalar dependencias |
+| Navegador moderno | Últimas versiones | Interfaz de chat |
+| Git | Opcional | Clonar desde el repositorio público |
+| Docker Desktop | Opcional | Opción C — despliegue con Docker |
+| `cloudflared` | Opcional | Opción E — túnel público temporal |
+| Clave `GEMINI_API_KEY` | **Opcional** | Modo con Gemini real; sin ella corre en modo determinista |
+
+> No requiere base de datos (los maestros son archivos JSON del kit y el SAP es simulado). La `out/` se regenera con `npm run demo`.
+
+---
+
+## 4. Cómo ejecutarlo — elige una opción
+
+### Opción A — ZIP adjunto al correo (build precompilado)
+
+El ZIP contiene el código fuente **y** el build (`dist/` + `public/`). Pero requiere **Node 20+** y una sola instalación de dependencias para arrancar:
 
 ```bash
-docker compose up --build
-```
+# Windows (PowerShell)
+Expand-Archive -LiteralPath .\reto-03-sap-agent.zip -DestinationPath . -Force
+cd reto-03-sap-agent
 
-Abre <http://localhost:3001>. La primera vez compila el frontend y el backend. El volumen `reto03-out` conserva `out/`.
+# Linux/macOS
+unzip reto-03-sap-agent.zip
+cd reto-03-sap-agent
 
-### Opción B — local
-
-Requisitos: **Node 20+** (probado con Node 24), npm.
-
-```bash
 npm install
-copy .env.example .env    # Windows; en Linux/macOS: cp .env.example .env
-npm run dev
+npm start        # http://localhost:3001
+npm run demo     # verificación 6/6 (sin LLM, sin internet)
 ```
 
-- Frontend de desarrollo: <http://localhost:5173>
-- API: <http://localhost:3001>
-- Si no defines `GEMINI_API_KEY`, arranca en modo determinista y el chat sigue funcionando.
+> Para validar solo el comportamiento funcional no hace falta npm, modelo ni red: `npm run demo` prueba los 6 casos y la idempotencia de `sol-001`.
 
-Para producción local:
-
-```bash
-npm run build
-npm start
-```
-
-### Opción C — demo pública con túnel
-
-La URL pública de arriba apunta al servidor local mediante un túnel Cloudflare. Para regenerarla:
-
-```bash
-# Terminal 1 (una sola vez: instalar y compilar)
-npm install
-npm run build
-npm start
-
-# Terminal 2
-npm run tunnel
-```
-
-El script descarga `cloudflared` la primera vez en `.tools/` (ignorado por Git) e imprime una URL `https://....trycloudflare.com`. Mantén ambas ventanas abiertas. Para un despliegue permanente, usa el `Dockerfile`/`render.yaml` (sección 7).
-
-### Opción D — Clonar el repositorio público y validar
+### Opción B — Clonar el repositorio público y validar
 
 Repositorio público: <https://github.com/dfserver1/reto-03-sap-agent>
 
@@ -102,9 +116,89 @@ npm run demo    # 6/6 PASS, sin consumir LLM
 - Para validar solo el comportamiento funcional, `npm run demo` no requiere red, modelo ni clave de API.
 - Para validar sin instalar nada, usa el ZIP adjunto al correo (incluye el build precompilado `dist/` + `public/`).
 
+### Opción C — Docker (un solo comando)
+
+```bash
+docker compose up --build
+```
+
+Abre <http://localhost:3001>. La primera vez compila el frontend y el backend. El volumen `reto03-out` conserva `out/`.
+
+### Opción D — Local (arranque de desarrollo)
+
+```bash
+npm install
+cp .env.example .env      # Windows: copy .env.example .env
+npm run dev
+```
+
+- Frontend de desarrollo: <http://localhost:5173>
+- API: <http://localhost:3001>
+- Si no defines `GEMINI_API_KEY`, arranca en modo determinista y el chat sigue funcionando.
+
+Para producción local:
+
+```bash
+npm run build
+npm start
+```
+
+### Opción E — Túnel público (demo desde tu máquina)
+
+```bash
+# Terminal 1 (una sola vez: instalar y compilar)
+npm install
+npm run build
+npm start
+
+# Terminal 2
+npm run tunnel
+```
+
+El script descarga `cloudflared` la primera vez en `.tools/` (ignorado por Git) e imprime una URL `https://....trycloudflare.com`. Mantén ambas ventanas abiertas. Para un despliegue permanente, usa el `Dockerfile`/`render.yaml` (sección 5).
+
 ---
 
-## 3. Variables de entorno
+## 5. Qué debe realizar y cómo se valida (para el reclutador)
+
+**Objetivo:** verificar que el agente lee el paquete, aplica las reglas, genera evidencia y crea la OC únicamente cuando es seguro y confirmado.
+
+**Matriz de validación rápida:**
+
+| Qué validar | Comando / acción | Qué verás |
+|---|---|---|
+| Lógica funcional (6 casos) | `npm run demo` | `6/6 PASS`, 4 OC, idempotencia `4500000001` |
+| Arranque UI + API | `npm start` | `http://localhost:3001` |
+| Chat y tool calls | escribe `Procesa sol-004.` | Banner de confirmación RC5; `confirmo` → OC `4500000002` |
+| `sol-001` idempotente | `Procesa sol-001.` dos veces | Misma OC `4500000001` |
+| Bloqueos | `Procesa sol-002.` / `sol-003.` | RC1 / RC2, sin crear |
+| Retroactiva | `Procesa sol-005.` | `retroactiva=true`, confirmación RC8 |
+| Derivados | `Procesa sol-006.` | IVA `C1` + Pago `Z030`, confirmación RC6 |
+| Estado del servidor | `GET /api/health` | `{"ok":true,"provider":"mock",...}` |
+
+**Paso a paso (5 minutos):**
+
+1. `npm ci`
+2. `npm run demo` → confirma `6/6 PASS`.
+3. `npm run build` → compila `public/` + `dist/`.
+4. `npm start` → abre `http://localhost:3001`.
+5. Prueba en el chat: `Procesa sol-001.` → `OC 4500000001`; `Procesa sol-004.` → pide confirmación; escribe `confirmo` → `OC 4500000002`.
+6. Panel derecho: payload, evidencia (`aprobacion.txt`), `control.csv` y órdenes del SAP simulado.
+
+---
+
+## 6. Despliegue y estado público
+
+- **ZIP adjunto:** build precompilado incluído; requiere Node 20+ y `npm install` (o `npm ci`).
+- **Repositorio público:** fuente en GitHub; ver Opción B.
+- **Docker:** `docker compose up --build`.
+- **Render:** `render.yaml` define el servicio Docker con health check `/api/health` y `GEMINI_API_KEY` como secreto (`sync: false`).
+- **Vercel:** `vercel.json` + `api/[...path].ts` (serverless, `/tmp/out`). En Windows, `vercel deploy --temporary` puede fallar con `spawn cmd.exe ENOENT`; usa el despliegue Git remoto o Docker/Render.
+- **Túnel Cloudflare:** `npm run tunnel` (URL temporal `https://....trycloudflare.com`).
+
+---
+
+## 7. Variables de entorno
 
 Copia `.env.example` a `.env`. **Ninguna clave se commitea**: `.env` está en `.gitignore`.
 
@@ -145,7 +239,7 @@ Si la clave falta o Gemini falla, el servidor no se cae: usa la ruta determinist
 
 ---
 
-## 4. Cómo se usa el chat
+## 8. Cómo se usa el chat
 
 1. Elige un caso en la barra lateral o escribe, por ejemplo, `Procesa la solicitud sol-001.`
 2. El agente ejecuta y muestra cada llamada a herramienta (`oc_leer_paquete`, `oc_validar`, `oc_construir_payload`, `oc_generar_evidencia`, `oc_crear`) con sus argumentos y un resumen del resultado.
@@ -169,7 +263,7 @@ La interfaz guarda el `sessionId` en `localStorage`; **Nueva sesión** limpia el
 
 ---
 
-## 5. Estructura del repositorio
+## 9. Estructura del repositorio
 
 ```text
 reto-03-sap-agent/
@@ -202,7 +296,7 @@ reto-03-sap-agent/
 
 ---
 
-## 6. Contrato de herramientas
+## 10. Contrato de herramientas
 
 Todas las herramientas devuelven **strings JSON** (`{ ok, data }` o `{ ok:false, error, codigo }`) y nunca lanzan excepciones al modelo. El backend valida los argumentos con Zod y devuelve el error de validación si no cumplen.
 
@@ -219,7 +313,7 @@ El payload que recibe `oc_crear` se compara con el payload canónico reconstruid
 
 ---
 
-## 7. Salidas y despliegue
+## 11. Salidas y despliegue
 
 ### Archivos de evidencia
 
@@ -238,23 +332,12 @@ out/
 
 ### Docker / Render
 
-- **Docker:** `docker compose up --build` (sección 2).
+- **Docker:** `docker compose up --build` (sección 4C).
 - **Render:** el archivo `render.yaml` define un servicio Docker con health check y `GEMINI_API_KEY` como secreto (`sync: false`). Conéctalo a un repositorio y define la clave en el panel de Render.
 - **Vercel:** existe `vercel.json` + `api/[...path].ts` como alternativa serverless. En Vercel el filesystem es efímero: la app escribe en `/tmp/out` y las sesiones viven en memoria por instancia. Para una demo con confirmaciones confiables, se recomienda Docker/Render o el túnel; Vercel sirve para una demo de una sola sesión si la instancia se mantiene caliente. En Windows, `vercel deploy --temporary` puede fallar con `spawn cmd.exe ENOENT` (limitación del CLI); en ese caso usa el despliegue remoto desde Git, WSL o Docker/Render.
-- **Túnel:** `npm run tunnel` (sección 2C). Es la URL usada en esta entrega.
+- **Túnel:** `npm run tunnel` (sección 4E). Es la URL pública usada en esta entrega.
 
----
-
-## 8. Pruebas
-
-```bash
-npm run typecheck    # TypeScript estricto, backend + frontend + api
-npm run demo         # 6/6 PASS, idempotencia y confirmaciones
-npm run build        # Vite + tsc
-npm start            # servidor en 3001
-```
-
-Endpoints útiles:
+### Endpoints útiles
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -269,7 +352,7 @@ Endpoints útiles:
 
 ---
 
-## 9. Seguridad y límites
+## 12. Seguridad y límites
 
 - La clave del modelo solo se lee de `process.env`; no aparece en el frontend, el repositorio ni los logs. `/api/health` no la expone.
 - Los fixtures se leen del disco y se validan en el servidor; el modelo no es la fuente de verdad de montos, NIT, fechas ni códigos.
@@ -281,14 +364,11 @@ Endpoints útiles:
   - Concurrencia máxima de chats: `MAX_CONCURRENT_CHATS=4`.
 - Endurecimiento HTTP: Helmet con CSP estricta, `X-Frame-Options: DENY`, sin fuente inline de scripts, `Referrer-Policy: no-referrer`, COOP/COEP/CRP restringidos; rate limit global y por chat (120/12 req/min); body JSON máximo 256 kb; mensaje máximo 8000 caracteres; origen permitido para escrituras (`APP_ORIGINS`).
 - Redacción centralizada: logs, errores, evidencias y respuestas se pasan por `src/lib/redact.ts` (secretos y variables con nombre sensible).
-- Los fixtures se leen del disco y se validan en el servidor; el modelo no es la fuente de verdad de montos, NIT, fechas ni códigos.
-- `oc_crear` reconstruye el payload esperado y compara hashes; cualquier alteración se rechaza.
-- Las confirmaciones humanas se procesan en un turno separado: el modelo no puede pasar `confirmado=true` por sí mismo. La única ruta que lo hace es `manejarConfirmacionPendiente`, después de un mensaje afirmativo del usuario.
 - No hay autenticación de usuarios ni persistencia de sesiones: es una demo. Para producción se requiere SSO, base de datos/Redis, rate limiting, trazas y un adaptador SAP real (ver `SOLUCION.md`).
 
 ---
 
-## 10. Uso de IA
+## 13. Uso de IA
 
 El detalle está en [`SOLUCION.md`](./SOLUCION.md), sección 11. En resumen: se usó un asistente de IA (OpenCode + DeepSeek V4.1 Flash) para scaffolding, adaptadores, UI, documentación y revisión; el modelo de producción es Gemini 4 Hydrogen (`gemini-4-hydrogen`) con `thinkingLevel` configurado. Todas las decisiones se verificaron con `npm run demo`, `npm run typecheck`, `npm run build`, pruebas de API y una prueba de interfaz en Chrome headless.
 
